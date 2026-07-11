@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<!--
+  Alexandra's Animal Sounds
+  ---------------------------------------------------------------
+  A one-file soundboard. Tap an animal, it lights up and makes a sound.
+
+  DEPLOY (GitHub Pages):
+    1. Make a repo, put this file in it, name it exactly  index.html
+    2. Repo Settings -> Pages -> Source: "Deploy from a branch" -> main / root
+    3. Wait a minute, open the URL it gives you. Done.
+
+  REAL ANIMAL SOUNDS:
+    11 of the 12 animals now play a real recording pulled live from
+    animal-sounds.org (their sounds are free to use with a link-back, which
+    is included near the bottom of this file). Frog has no recording on that
+    site, so it keeps its built-in synth croak.
+
+    Want a specific sound to be yours / offline / instant? Drop an mp3 into a
+    "sounds" folder next to this file, named after the animal id:
+        sounds/dog.mp3   sounds/cow.mp3   sounds/lion.mp3   ...
+    A local file always wins over the remote one. No code change needed.
+    If any recording fails to load, that button falls back to the synth.
+    Free sounds: freesound.org, pixabay.com/sound-effects
+  ---------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0b0f">
+<title>Animal Sounds</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #0b0b0f;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  #board {
+    height: 100vh;
+    height: 100dvh;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 6px;
+    padding: 6px;
+    padding-top: calc(6px + env(safe-area-inset-top));
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+    padding-left: calc(6px + env(safe-area-inset-left));
+    padding-right: calc(6px + env(safe-area-inset-right));
+    box-sizing: border-box;
+  }
+
+  .btn {
+    border: none;
+    border-radius: 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: #fff;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    will-change: transform, filter;
+  }
+
+  .emoji {
+    font-size: min(15vw, 12vh);
+    line-height: 1;
+    text-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+  }
+
+  .label {
+    font-size: min(3.6vw, 2.6vh);
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+  }
+
+  .btn:active { filter: brightness(1.35); }
+
+  .btn.lit { animation: lit 0.34s ease-out; }
+
+  @keyframes lit {
+    0%   { transform: scale(1);    filter: brightness(1); }
+    12%  {
+      transform: scale(1.07);
+      filter: brightness(1.75);
+      box-shadow: 0 0 36px 10px rgba(255, 255, 255, 0.95),
+                  inset 0 0 55px rgba(255, 255, 255, 0.6);
+    }
+    100% {
+      transform: scale(1);
+      filter: brightness(1);
+      box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn.lit { animation: none; filter: brightness(1.6); }
+  }
+</style>
+</head>
+<body>
+<div id="board"></div>
+
+<!-- Sound credit / required link-back for animal-sounds.org recordings.
+     Kept off-screen so it never covers a button, but it is a real link. -->
+<a id="credit" href="https://www.animal-sounds.org/" target="_blank" rel="noopener"
+   style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;">
+   Animal recordings from animal-sounds.org</a>
+
+<script>
+"use strict";
+
+/* --- The animals. Add or remove freely; the grid rebuilds itself.
+       Each `src` is a real recording from animal-sounds.org (used with a
+       link-back credit, per their terms). If a recording fails to load, the
+       button silently falls back to the built-in synth sound below.
+       Frog has no recording on the source site, so it stays pure synth. --- */
+var REMOTE = "https://www.animal-sounds.org/";
+var ANIMALS = [
+  { id:"dog",      emoji:"🐶", name:"Dog",      color:"#FF5252",
+    src:REMOTE+"farm/Dog%20bark%20animals079.wav",
+    grains:[ {type:"square",f0:380,f1:250,dur:0.12,gain:0.30},
+             {type:"square",f0:380,f1:250,dur:0.12,gain:0.30,delay:0.18} ] },
+  { id:"cat",      emoji:"🐱", name:"Cat",      color:"#FF9800",
+    file:"cat.mp3",
+    src:REMOTE+"farm/Cat%20meow%20animals020.wav",
+    grains:[ {type:"triangle",f0:650,fPeak:1000,f1:520,dur:0.5,gain:0.28,vibRate:12,vibDepth:15} ] },
+  { id:"duck",     emoji:"🦆", name:"Duck",     color:"#FFD600",
+    src:REMOTE+"farm/Duck-quacking%20animals038.wav",
+    grains:[ {type:"square",f0:480,f1:380,dur:0.16,gain:0.26,tremRate:45,tremDepth:0.25},
+             {type:"square",f0:480,f1:380,dur:0.16,gain:0.26,tremRate:45,tremDepth:0.25,delay:0.16} ] },
+  { id:"lion",     emoji:"🦁", name:"Lion",     color:"#F9A825",
+    src:REMOTE+"jungle/Lion%20roar%20animals031.wav",
+    grains:[ {type:"sawtooth",f0:130,fPeak:155,f1:85,dur:0.95,gain:0.34,tremRate:17,tremDepth:0.28} ] },
+  { id:"frog",     emoji:"🐸", name:"Frog",     color:"#4CAF50",
+    file:"frog.mp3",
+    grains:[ {type:"square",f0:210,f1:170,dur:0.13,gain:0.30,tremRate:32,tremDepth:0.35},
+             {type:"square",f0:210,f1:170,dur:0.13,gain:0.30,tremRate:32,tremDepth:0.35,delay:0.2} ] },
+  { id:"cow",      emoji:"🐄", name:"Cow",      color:"#26A69A",
+    src:REMOTE+"farm/Cow%20moo%20twice%20animals054.wav",
+    grains:[ {type:"sawtooth",f0:165,f1:140,dur:0.75,gain:0.32,vibRate:6,vibDepth:5} ] },
+  { id:"bird",     emoji:"🐦", name:"Bird",     color:"#29B6F6",
+    src:REMOTE+"Air/Bird%20songs%20animals141.wav",
+    grains:[ {type:"sine",f0:2200,f1:3200,dur:0.08,gain:0.22},
+             {type:"sine",f0:2400,f1:3400,dur:0.08,gain:0.22,delay:0.12},
+             {type:"sine",f0:2000,f1:3000,dur:0.08,gain:0.22,delay:0.24} ] },
+  { id:"elephant", emoji:"🐘", name:"Elephant", color:"#5C6BC0",
+    src:REMOTE+"jungle/Elephant%20trumpeting%20animals129.wav",
+    grains:[ {type:"sawtooth",f0:300,fPeak:640,f1:420,dur:0.7,gain:0.32,tremRate:11,tremDepth:0.15} ] },
+  { id:"owl",      emoji:"🦉", name:"Owl",      color:"#AB47BC",
+    src:REMOTE+"Air/owl%20animals074.wav",
+    grains:[ {type:"sine",f0:400,fPeak:430,f1:370,dur:0.35,gain:0.24},
+             {type:"sine",f0:400,fPeak:430,f1:370,dur:0.35,gain:0.24,delay:0.5} ] },
+  { id:"pig",      emoji:"🐷", name:"Pig",      color:"#FF4FA3",
+    src:REMOTE+"farm/Pig%20squeal%20animals024.wav",
+    grains:[ {type:"square",f0:320,f1:250,dur:0.1,gain:0.28,tremRate:26,tremDepth:0.25},
+             {type:"square",f0:320,f1:250,dur:0.1,gain:0.28,tremRate:26,tremDepth:0.25,delay:0.14},
+             {type:"square",f0:320,f1:250,dur:0.1,gain:0.28,tremRate:26,tremDepth:0.25,delay:0.28} ] },
+  { id:"horse",    emoji:"🐴", name:"Horse",    color:"#8D6E63",
+    src:REMOTE+"farm/Horse%20whinny%20animals126.wav",
+    grains:[ {type:"sawtooth",f0:620,f1:300,dur:0.5,gain:0.28,tremRate:24,tremDepth:0.4} ] },
+  { id:"sheep",    emoji:"🐑", name:"Sheep",    color:"#90A4AE",
+    src:REMOTE+"farm/Sheep%20animals057.wav",
+    grains:[ {type:"sawtooth",f0:435,f1:400,dur:0.6,gain:0.26,vibRate:12,vibDepth:22} ] }
+];
+
+/* --- Audio context, created lazily inside the first tap (a user gesture) --- */
+var actx = null;
+function ctx() {
+  if (!actx) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    actx = new AC();
+  }
+  if (actx.state === "suspended") { actx.resume(); }
+  return actx;
+}
+
+/* --- Synth: one enveloped oscillator "grain" with optional pitch sweep,
+       vibrato (wobble), and tremolo (buzz). Several grains make one call. --- */
+function grain(p) {
+  var c = ctx();
+  var t0 = c.currentTime + (p.delay || 0);
+  var dur = p.dur;
+  var g = (p.gain != null) ? p.gain : 0.28;
+
+  var osc = c.createOscillator();
+  osc.type = p.type || "sine";
+  var f0 = p.f0;
+  var f1 = (p.f1 != null) ? p.f1 : p.f0;
+  osc.frequency.setValueAtTime(f0, t0);
+  if (p.fPeak != null) {
+    osc.frequency.linearRampToValueAtTime(p.fPeak, t0 + dur * 0.35);
+    osc.frequency.linearRampToValueAtTime(f1, t0 + dur);
+  } else {
+    osc.frequency.linearRampToValueAtTime(f1, t0 + dur);
+  }
+
+  var amp = c.createGain();
+  var atk = 0.008;
+  var rel = Math.min(0.12, dur * 0.4);
+  amp.gain.setValueAtTime(0.0001, t0);
+  amp.gain.linearRampToValueAtTime(g, t0 + atk);
+  amp.gain.setValueAtTime(g, t0 + Math.max(atk, dur - rel));
+  amp.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+
+  osc.connect(amp);
+  amp.connect(c.destination);
+
+  if (p.vibRate) {
+    var v = c.createOscillator();
+    v.frequency.value = p.vibRate;
+    var vg = c.createGain();
+    vg.gain.value = p.vibDepth || 10;
+    v.connect(vg); vg.connect(osc.frequency);
+    v.start(t0); v.stop(t0 + dur + 0.02);
+  }
+  if (p.tremRate) {
+    var tr = c.createOscillator();
+    tr.frequency.value = p.tremRate;
+    var tg = c.createGain();
+    tg.gain.value = (p.tremDepth || 0.2) * g;
+    tr.connect(tg); tg.connect(amp.gain);
+    tr.start(t0); tr.stop(t0 + dur + 0.02);
+  }
+
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.03);
+}
+function synth(a) { for (var i = 0; i < a.grains.length; i++) { grain(a.grains[i]); } }
+
+/* --- Clip loader. Each animal gets an ordered list of candidates: a local
+       recording in sounds/<id>.mp3 (drop one in whenever you like) wins;
+       otherwise the remote animal-sounds.org clip plays; if neither is ready,
+       the synth covers it. Plain <audio> playback works cross-origin. --- */
+function makeClip(url) {
+  var au = new Audio(url);
+  au.preload = "auto";
+  var ready = false;
+  au.addEventListener("canplaythrough", function () { ready = true; }, { once: true });
+  au.addEventListener("error", function () { ready = false; }, { once: true });
+  au.load();
+  return { au: au, isReady: function () { return ready; } };
+}
+
+var players = {};
+ANIMALS.forEach(function (a) {
+  var list = [];
+  if (a.file) { list.push(makeClip(a.file)); }        // hand-picked local file wins
+  list.push(makeClip("sounds/" + a.id + ".mp3"));     // then a sounds/<id>.mp3 drop-in
+  if (a.src) { list.push(makeClip(a.src)); }          // then the remote clip
+  players[a.id] = list;                               // then synth (in play())
+});
+
+function play(a) {
+  var list = players[a.id] || [];
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i];
+    if (p && p.isReady()) {
+      try {
+        p.au.currentTime = 0;
+        var pr = p.au.play();
+        if (pr && pr.catch) { pr.catch(function () { synth(a); }); }
+        return;
+      } catch (e) { /* try next candidate, then synth */ }
+    }
+  }
+  synth(a);
+}
+
+/* --- Build the grid and wire up instant, multi-touch taps --- */
+var board = document.getElementById("board");
+ANIMALS.forEach(function (a) {
+  var b = document.createElement("button");
+  b.className = "btn";
+  b.style.background = a.color;
+  b.setAttribute("aria-label", a.name);
+
+  var em = document.createElement("span");
+  em.className = "emoji";
+  em.textContent = a.emoji;
+  var lb = document.createElement("span");
+  lb.className = "label";
+  lb.textContent = a.name;
+  b.appendChild(em);
+  b.appendChild(lb);
+
+  b.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    play(a);
+    b.classList.remove("lit");
+    void b.offsetWidth;      // restart the glow even on rapid repeat taps
+    b.classList.add("lit");
+  });
+  b.addEventListener("animationend", function () { b.classList.remove("lit"); });
+
+  board.appendChild(b);
+});
+
+/* Kill long-press context menu so mashing never pops a save/select menu */
+window.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+</script>
+</body>
+</html>

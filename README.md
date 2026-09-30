@@ -1,2 +1,2 @@
 https://DanielKetterer.github.io/AlexandraCode
-DanielKetterer.github.io/AlexandraCode/redlight.html
+DanielKetterer.github.io/AlexandraCode/redlight

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<!--
+  Red Light, Green Light (for Alexandra)
+  ---------------------------------------------------------------
+  One-file game. Music plays on GREEN, stops on RED. Move and bounce
+  while it plays, freeze in your bubble when it stops.
+
+  What it's for:
+    - Rhythm:  a steady, simple beat; the frog bounces exactly on it.
+    - Stop/go: the music stopping is the cue to freeze. Same frog in both
+               states - moving vs still - so the contrast is the lesson.
+    - Personal space: on RED a "bubble" ring breathes around the frog.
+               Grown-up models it: arms out in a circle, "this is my bubble",
+               hug yourself, hold still.
+
+  Modes (top of the screen):
+    Tap  - grown-up controls it. Tap anywhere: go / stop. Best for now,
+           because you can time the stops to what she's doing.
+    Auto - runs itself: 2-5 bars of green, one yellow "get ready" bar
+           (melody drops out, just the beat), then a short red freeze.
+           In Auto, tapping the screen plays a clap - she can play along.
+  Tempo: Slow / Mid / Fast.
+
+  Everything is synthesized with Web Audio, so it works offline once loaded.
+  Link: https://DanielKetterer.github.io/AlexandraCode/redlight.html
+  ---------------------------------------------------------------
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0b0f">
+<title>Red Light Green Light</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #0b0b0f;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5vh;
+    background: #1c1c26;
+    transition: background-color 0.25s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    cursor: pointer;
+  }
+  body[data-state="green"]  #stage { background: #1fa855; }
+  body[data-state="yellow"] #stage { background: #f2b705; }
+  body[data-state="red"]    #stage { background: #e0302b; }
+
+  #light {
+    position: relative;
+    width: min(60vw, 42vh);
+    height: min(60vw, 42vh);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    will-change: transform;
+  }
+  #face {
+    font-size: min(30vw, 21vh);
+    line-height: 1;
+    pointer-events: none;
+    text-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  }
+
+  /* Bounce on every beat (duration set from JS to one beat) */
+  #light.beat { animation: beat var(--beat, 0.6s) cubic-bezier(.2,.7,.3,1); }
+  @keyframes beat {
+    0%   { transform: scale(1.13) translateY(-5%); }
+    100% { transform: scale(1)    translateY(0); }
+  }
+  #light.hit { animation: hit 0.18s ease-out; }
+  @keyframes hit {
+    0%   { filter: brightness(1.6); transform: scale(1.06); }
+    100% { filter: brightness(1);   transform: scale(1); }
+  }
+
+  /* The personal-space bubble: only visible on red, breathes slowly */
+  #bubble {
+    position: absolute;
+    inset: -12%;
+    border-radius: 50%;
+    border: max(6px, 1.3vmin) solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 30px rgba(255, 255, 255, 0.35);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  }
+  body[data-state="red"] #bubble {
+    opacity: 1;
+    animation: breathe 4s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.1); }
+  }
+
+  #word {
+    font-size: min(11vw, 7.5vh);
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #fff;
+    text-transform: uppercase;
+    text-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+  }
+
+  #bar {
+    position: fixed;
+    top: calc(10px + env(safe-area-inset-top));
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .group {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.25);
+    pointer-events: auto;
+  }
+  .chip {
+    border: none;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font: 700 14px system-ui, -apple-system, sans-serif;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chip.on { background: #fff; color: #111; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #light.beat, #light.hit { animation: none; }
+    body[data-state="red"] #bubble { animation: none; }
+  }
+</style>
+</head>
+<body data-state="idle">
+
+<div id="bar">
+  <div class="group" id="modes">
+    <button class="chip on" data-mode="tap">Tap</button>
+    <button class="chip" data-mode="auto">Auto</button>
+  </div>
+  <div class="group" id="tempos">
+    <button class="chip" data-tempo="84">Slow</button>
+    <button class="chip on" data-tempo="100">Mid</button>
+    <button class="chip" data-tempo="116">Fast</button>
+  </div>
+</div>
+
+<div id="stage">
+  <div id="light"><div id="bubble"></div><span id="face">🐸</span></div>
+  <div id="word">Tap to play</div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- Settings ---------- */
+var bpm = 100;
+var mode = "tap";          // "tap" (grown-up controls) or "auto"
+var RED_SECONDS = [2.5, 4.5];  // auto-mode freeze length range
+var GREEN_BARS  = [2, 5];      // auto-mode green length range (bars)
+
+/* ---------- The song: I - V - vi - IV in C, pentatonic melody ---------- */
+var ROOTS  = [48, 43, 45, 41];                     // C3, G2, A2, F2
+var MELODY = [76, 79, 81, 79,   74, 76, 79, null,  // one note per beat, 4 bars
+              72, 74, 76, 79,   81, 79, 76, null];
+function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function eighth() { return 60 / bpm / 2; }
+
+/* ---------- Audio plumbing ---------- */
+var actx = null, musicBus = null, cueBus = null, noiseBuf = null;
+function ctx() {
+  if (!actx) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    actx = new AC();
+    musicBus = actx.createGain(); musicBus.connect(actx.destination);
+    cueBus   = actx.createGain(); cueBus.connect(actx.destination);
+    var len = Math.floor(actx.sampleRate * 0.5);
+    noiseBuf = actx.createBuffer(1, len, actx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for (var i = 0; i < len; i++) { d[i] = Math.random() * 2 - 1; }
+  }
+  if (actx.state === "suspended") { actx.resume(); }
+  return actx;
+}
+
+function tone(freq, t, dur, gain, type, bus) {
+  var o = actx.createOscillator();
+  o.type = type || "sine";
+  o.frequency.setValueAtTime(freq, t);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(bus || musicBus);
+  o.start(t); o.stop(t + dur + 0.03);
+}
+function marimba(m, t) {
+  var f = mtof(m);
+  tone(f, t, 0.5, 0.22, "sine");
+  tone(f * 4, t, 0.07, 0.05, "sine");   // little mallet "tick"
+}
+function bass(m, t) { tone(mtof(m), t, 0.4, 0.3, "triangle"); }
+function kick(t) {
+  var o = actx.createOscillator();
+  o.frequency.setValueAtTime(150, t);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+  var g = actx.createGain();
+  g.gain.setValueAtTime(0.9, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  o.connect(g); g.connect(musicBus);
+  o.start(t); o.stop(t + 0.22);
+}
+function noise(t, dur, gain, freq, kind, bus) {
+  var s = actx.createBufferSource(); s.buffer = noiseBuf;
+  var f = actx.createBiquadFilter(); f.type = kind; f.frequency.value = freq;
+  var g = actx.createGain();
+  g.gain.setValueAtTime(gain, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(bus || musicBus);
+  s.start(t); s.stop(t + dur + 0.02);
+}
+function hat(t, loud)  { noise(t, 0.04, loud ? 0.12 : 0.06, 7000, "highpass"); }
+function clap(t, bus)  { noise(t, 0.12, 0.35, 1400, "bandpass", bus); }
+
+/* Cues: "ba-da-DING" up for go, "boo-boop" down for stop, soft bell for ready */
+function goCue(t)    { [60, 64, 67, 72].forEach(function (m, i) { tone(mtof(m), t + i * 0.07, 0.25, 0.25, "triangle", cueBus); }); }
+function stopCue(t)  { tone(mtof(67), t, 0.22, 0.32, "square", cueBus); tone(mtof(60), t + 0.2, 0.35, 0.32, "square", cueBus); }
+function readyCue(t) { tone(mtof(84), t, 0.6, 0.18, "sine", cueBus); tone(mtof(84), t + 0.3, 0.6, 0.18, "sine", cueBus); }
+
+/* ---------- Beat scheduler (look-ahead, so timing never drifts) ---------- */
+var LOOK = 0.12;
+var playing = false, timer = null, step = 0, nextTime = 0;
+var phase = "idle";      // what the audio is doing (scheduler time)
+var layer = "full";      // "full" = whole song, "beat" = yellow bar (no melody/bass)
+var barsLeft = 0, redTimeout = null;
+var events = [];         // visual events to fire when audio reaches them
+
+function queue(t, type) { events.push({ t: t, type: type }); }
+
+function schedule() {
+  while (playing && nextTime < actx.currentTime + LOOK) {
+    if (step % 8 === 0) { barBoundary(nextTime); }
+    if (!playing) { break; }
+    playStep(step, nextTime);
+    step = (step + 1) % 32;
+    nextTime += eighth();
+  }
+}
+
+function playStep(s, t) {
+  var e = s % 8, bar = Math.floor(s / 8);
+  if (e === 0 || e === 4) { kick(t); }
+  hat(t, e % 2 === 0);
+  if (layer === "full") {
+    if (e === 2 || e === 6) { clap(t); }
+    if (e === 0 || e === 4) { bass(ROOTS[bar], t); }
+    if (e % 2 === 0) {
+      var m = MELODY[bar * 4 + e / 2];
+      if (m) { marimba(m, t); }
+    }
+  }
+  if (e % 2 === 0) { queue(t, "beat"); }
+}
+
+function barBoundary(t) {
+  if (mode !== "auto") { return; }
+  if (phase === "green") {
+    barsLeft--;
+    if (barsLeft <= 0) {
+      phase = "yellow"; layer = "beat";
+      readyCue(t); queue(t, "yellow");
+    }
+  } else if (phase === "yellow") {
+    stopMusicAt(t);
+    stopCue(t); queue(t, "red");
+    var wait = (t - actx.currentTime) + rand(RED_SECONDS[0], RED_SECONDS[1]);
+    redTimeout = setTimeout(goGreen, wait * 1000);
+  }
+}
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b) { return Math.floor(rand(a, b + 1)); }
+
+/* ---------- Transitions ---------- */
+function goGreen() {
+  var c = ctx();
+  clearTimeout(redTimeout);
+  var now = c.currentTime;
+  musicBus.gain.cancelScheduledValues(now);
+  musicBus.gain.setValueAtTime(1, now);
+  goCue(now);
+  phase = "green"; layer = "full";
+  barsLeft = randInt(GREEN_BARS[0], GREEN_BARS[1]) + 1;   // +1: first boundary is the downbeat
+  step = 0;
+  nextTime = now + 0.3;          // let the go-cue land, then the downbeat
+  events = [];
+  setState("green");
+  playing = true;
+  clearInterval(timer);
+  timer = setInterval(schedule, 25);
+  schedule();
+  keepAwake();
+}
+
+function stopMusicAt(t) {
+  playing = false;
+  clearInterval(timer);
+  musicBus.gain.cancelScheduledValues(t);
+  musicBus.gain.setTargetAtTime(0, t, 0.015);   // clean cut, no click
+  phase = "red";
+}
+
+function goRed() {              // immediate stop (Tap mode)
+  var now = ctx().currentTime;
+  clearTimeout(redTimeout);
+  stopMusicAt(now);
+  events = [];
+  stopCue(now);
+  setState("red");
+}
+
+function goIdle() {
+  if (actx) { stopMusicAt(actx.currentTime); }
+  clearTimeout(redTimeout);
+  events = [];
+  phase = "idle";
+  setState("idle");
+}
+
+/* ---------- Visuals ---------- */
+var light = document.getElementById("light");
+var word  = document.getElementById("word");
+var WORDS = { idle: "Tap to play", green: "Go!", yellow: "Get ready", red: "Freeze" };
+
+function setState(s) {
+  document.body.setAttribute("data-state", s);
+  word.textContent = WORDS[s];
+}
+function pulse(cls) {
+  light.classList.remove("beat", "hit");
+  void light.offsetWidth;        // restart the animation
+  light.classList.add(cls);
+}
+light.addEventListener("animationend", function () { light.classList.remove("beat", "hit"); });
+
+function frame() {
+  if (actx) {
+    var now = actx.currentTime;
+    while (events.length && events[0].t <= now) {
+      var ev = events.shift();
+      if (ev.type === "beat") {
+        light.style.setProperty("--beat", (60 / bpm) + "s");
+        pulse("beat");
+      } else {
+        setState(ev.type);
+      }
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- Input ---------- */
+var lastTap = 0;
+document.getElementById("stage").addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  var t = Date.now();
+  if (mode === "tap") {
+    if (t - lastTap < 350) { return; }   // mash guard
+    lastTap = t;
+    if (phase === "green" || phase === "yellow") { goRed(); } else { goGreen(); }
+  } else {
+    if (phase === "idle") { goGreen(); return; }
+    clap(ctx().currentTime, cueBus);     // play-along clap
+    pulse("hit");
+  }
+});
+
+function pick(groupId, attr, onPick) {
+  var chips = document.querySelectorAll("#" + groupId + " .chip");
+  chips.forEach(function (b) {
+    b.addEventListener("pointerdown", function (e) {
+      e.stopPropagation();
+      chips.forEach(function (x) { x.classList.toggle("on", x === b); });
+      onPick(b.getAttribute(attr));
+    });
+  });
+}
+pick("modes", "data-mode", function (m) { mode = m; goIdle(); });
+pick("tempos", "data-tempo", function (v) { bpm = Number(v); });
+
+/* Keep the screen on while playing (where supported) */
+var lock = null;
+function keepAwake() {
+  try {
+    if (!lock && navigator.wakeLock) {
+      navigator.wakeLock.request("screen").then(function (l) {
+        lock = l; l.addEventListener("release", function () { lock = null; });
+      }).catch(function () {});
+    }
+  } catch (e) {}
+}
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden && phase !== "idle") { goIdle(); }
+});
+
+window.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+</script>
+</body>
+</html>

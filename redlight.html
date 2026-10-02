@@ -17,8 +17,9 @@
     Frog Hop      original, bouncy, 4/4, form AABA (16 bars)
     Twinkle       "Twinkle Twinkle Little Star" (public domain, 1761 tune),
                   music-box sound, form ABA (12 bars)
-    Rocking Boat  original slow waltz in 3/4, the boat sways instead of
-                  bouncing, form AABA (32 short bars)
+    Rocking Boat  original slow waltz in 3/4, form AABA (32 short bars)
+    All three use the same visual: the circle bounces on every beat,
+    a little bigger on beat 1.
     Each song plays its form twice; the second time adds a harmony line
     under the melody, so nothing repeats exactly for a minute or more.
     Stopping is a pause button: green picks up right where red froze it.
@@ -218,7 +219,7 @@ var SONGS = {
          so the return to A feels like coming home. ---- */
   frog: {
     name: "Frog Hop", face: "🐸", bpm: 100, beats: 4,
-    voice: "marimba", drums: "bounce", accomp: "bounce", move: "bounce",
+    voice: "marimba", drums: "bounce", accomp: "bounce",
     amp: 1.13, lift: -5,
     sections: {
       A1: [
@@ -246,7 +247,7 @@ var SONGS = {
   /* ---- Twinkle Twinkle Little Star (traditional, public domain) ---- */
   star: {
     name: "Twinkle", face: "⭐", bpm: 92, beats: 4,
-    voice: "musicbox", drums: "gentle", accomp: "alberti", move: "bounce",
+    voice: "musicbox", drums: "gentle", accomp: "alberti",
     amp: 1.08, lift: -3,
     sections: {
       A: [
@@ -269,7 +270,8 @@ var SONGS = {
          A2 ends closed (on C), B is the high wave in the middle. ---- */
   boat: {
     name: "Rocking Boat", face: "⛵", bpm: 132, beats: 3,
-    voice: "flute", drums: "waltz", accomp: "waltz", move: "sway",
+    voice: "flute", drums: "waltz", accomp: "waltz",
+    amp: 1.1, lift: -4,
     sections: {
       A1: [
         ["C",  "E5 . . . G5 ."],
@@ -369,7 +371,7 @@ function compile(song) {
   return {
     song: song, spb: spb, bars: bars, total: bars.length * spb,
     name: song.name, face: song.face, bpm: song.bpm, beats: song.beats,
-    voice: song.voice, drums: song.drums, accomp: song.accomp, move: song.move,
+    voice: song.voice, drums: song.drums, accomp: song.accomp,
     amp: song.amp || 1.1, lift: song.lift || -4
   };
 }
@@ -690,14 +692,10 @@ var light = document.getElementById("light");
 var face  = document.getElementById("face");
 var word  = document.getElementById("word");
 var WORDS = { idle: "Tap to play", green: "Go!", yellow: "Get ready", red: "Freeze" };
-var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-var swayDir = 1;
 
 function setState(s) {
   document.body.setAttribute("data-state", s);
   word.textContent = WORDS[s];
-  if (s === "red") { freezeMotion(); }
-  if (s === "idle") { resetMotion(true); }
 }
 
 function pulse(cls) {
@@ -714,31 +712,13 @@ function bounce(down) {
   light.style.setProperty("--lift", S.lift + "%");
   pulse("beat");
 }
-function sway() {                               // one lean per bar, alternating sides
-  if (reduceMotion) { return; }
-  swayDir = -swayDir;
-  light.style.transition = "transform " + barSec() + "s ease-in-out";
-  light.style.transform = "rotate(" + (swayDir * 10) + "deg) translateX(" + (swayDir * 8) + "%)";
-}
-function freezeMotion() {                       // stop exactly where it is, mid-lean
-  if (S.move !== "sway") { return; }
-  var cur = getComputedStyle(light).transform;
-  light.style.transition = "none";
-  light.style.transform = (cur && cur !== "none") ? cur : "";
-}
-function resetMotion(animate) {
-  light.style.transition = animate ? "transform 0.5s ease" : "none";
-  light.style.transform = "";
-}
-
 function frame() {
   if (actx) {
     var now = actx.currentTime;
     while (events.length && events[0].t <= now) {
       var ev = events.shift();
       if (ev.type === "beat") {
-        if (S.move === "sway") { if (ev.down) { sway(); } }
-        else { bounce(ev.down); }
+        bounce(ev.down);
       } else {
         setState(ev.type);
       }
@@ -780,7 +760,6 @@ pick("songs", "data-song", function (k) {
   goIdle(true);
   S = COMPILED[k];
   face.textContent = S.face;
-  resetMotion(false);
 });
 pick("modes", "data-mode", function (m) { mode = m; goIdle(false); });
 pick("tempos", "data-tempo", function (v) { tempoMul = Number(v); });
